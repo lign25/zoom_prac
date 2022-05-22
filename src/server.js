@@ -15,23 +15,65 @@ app.get("/*", (_, res) => res.redirect("/"));
 const httpServer = http.createServer(app);
 const wsServer = SocketIO(httpServer);
 
+function publicRooms(){
+    const {
+        sockets: {
+            adapter: {sids, rooms },
+        },
+    } = wsServer;
+
+    const publicRooms = [];
+    rooms.forEach((_, key)=> {
+        if (sids.get(key) === undefined) {
+            publicRooms.push(key);
+        }
+    });
+    return publicRooms;
+}
+
+function countRoom(roomName){
+    return wsServer.sockets.adapter.rooms.get(roomName)?.size;
+}
+
+
+
 //front에서 back으로 연결
 wsServer.on("connection", (socket) => {
+    socket["nickname"] = "Anon";
     socket.onAny((event) => {
         console.log(`Socket Event:${event}`);
-    })
+    });
     //socket.emit과 socket.on은 같은 이름을 사용해야 한다.
+    //누군가 방에 입장했을 때 메세지 출력
     socket.on("enter_room", (roomName, done) => {
         //방에 참가하면 done함수 호출
-        //done함수는 프론트엔드에 있는 showRoom()을 실행
+        //done함수는 프론트엔드에 있는 showRoom()을 실행ß
         //이후 event를 참가한 방 안에 있는 모든 사람에게 emit
         socket.join(roomName);
         done();
-        socket.to(roomName).emit("welcome");
-        
-    
+        socket.to(roomName).emit("welcome", socket.nickname, countRoom(roomName));
+        wsServer.sockets.emit("room_change", publicRooms());
     });
+    socket.on("disconnecting", () => {
+        socket.rooms.forEach((room) => 
+        socket.to(room).emit("bye", socket.nickname, countRoom(room)-1)
+        );
+
+    });
+    //사용자가 disconnect하면 socketIO가 방을삭제
+    socket.on("disconnect", () => {
+        wsServer.sockets.emit("room_change", publicRooms());
+    });
+
+    socket.on("new_message", (msg, room, done) => {
+        socket.to(room).emit("new_message", `${socket.nickname}: ${msg}`);
+        done();
+    });
+    socket.on("nickname", (nickname) => (socket["nickname"] = nickname));
 });
+
+const handleListen = () => console.log('Listening on http://localhost:3000');
+httpServer.listen(3000, handleListen);
 
 // const sockets = [];
 
@@ -52,8 +94,3 @@ wsServer.on("connection", (socket) => {
 //         }
 //     });
 // });
-        
-
-const handleListen = () => console.log('Listening on http://localhost:3000');
-httpServer.listen(3000, handleListen);
-

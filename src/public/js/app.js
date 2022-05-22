@@ -14,14 +14,27 @@ function addMessage(message) {
     const li = document.createElement("li");
     li.innerText = message;
     ul.appendChild(li);
-
 }
 
-function showRoom(msg){
+function handleMessageSubmit(event) {
+    event.preventDefault();
+    const input = room.querySelector("#msg input");
+    const value = input.value;
+    socket.emit("new_message", input.value, roomName, () => {
+        addMessage(`You: ${value}`);
+    });    
+    input.value = "";
+}
+
+
+function showRoom(){
     welcome.hidden = true;
     room.hidden = false;
     const h3 = room.querySelector("h3");
     h3.innerText = `Room ${roomName}`;
+    const msgForm = room.querySelector("#msg");
+    msgForm.addEventListener("submit", handleMessageSubmit);
+    
 }
 
 function handleRoomSubmit(event){
@@ -39,6 +52,33 @@ form.addEventListener("submit", handleRoomSubmit);
 
 
 
-socket.on("welcome", () => {
-    addMessage("someone joined!");
+socket.on("welcome", (user, newCount) => {
+    const h3 = room.querySelector("h3");
+    h3.innerText = `Room ${roomName} (${newCount})`;
+    addMessage(`${user} arrived!`);
 });
+
+socket.on("bye",  (left, newCount) => {
+    const h3 = room.querySelector("h3");
+    h3.innerText = `Room ${roomName (${newCount})}`;
+    addMessage(`${left} someone left`);
+}); 
+
+socket.on("new_message", addMessage);
+
+//현재 열려있는 방list를 보여줌
+socket.on("room_change", (rooms)=> {
+    const roomList = welcome.querySelector("ul");
+    roomList.innerHTML = "";
+    if(room.length === 0) {
+        
+        return;
+    }
+    rooms.forEach(room => {
+        const li = document.createElement("li");
+        li.innerText = room;
+        roomList.append(li);
+    });
+});
+
+
