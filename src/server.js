@@ -1,5 +1,6 @@
 import http from "http";
-import SocketIO from "socket.io"
+import {Server} from "socket.io"
+import { instrument } from "@socket.io/admin-ui";
 import express from "express";
 
 const app = express();
@@ -13,7 +14,20 @@ app.get("/*", (_, res) => res.redirect("/"));
 
 
 const httpServer = http.createServer(app);
-const wsServer = SocketIO(httpServer);
+const wsServer = new Server(httpServer, {
+    //데모가 작동하는데에 필요한 환경설정
+    cors: {
+        origin: ["http://admin.socket.io"],
+        credentials: true,
+    },
+});
+
+instrument(wsServer, {
+    auth: false
+});
+
+
+
 
 function publicRooms(){
     const {
