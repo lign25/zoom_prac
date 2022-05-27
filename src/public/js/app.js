@@ -1,41 +1,39 @@
 const socket = io();
-
 const myFace = document.getElementById("myFace");
 const muteBtn = document.getElementById("mute");
 const cameraBtn = document.getElementById("camera");
 const camerasSelect = document.getElementById("cameras");
-
 const call = document.getElementById("call");
-
 call.hidden = true;
-
 let myStream;
 let muted = false;
 let cameraOff = false;
+let roomName;
+let myPeerConnection;
 
 
 
 async function getCameras() {  //navigator.mediaDevices.enumerateDevices 호출
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const cameras = devices.filter(device => device.kind === "videoinput");
+    const cameras = devices.filter((device) => device.kind === "videoinput");
       //어떤 카메라가 선택되었는지 알 수 있음
-      const cuurrentCamera = myStream.getAudioTracks()[0];
-      cameras.forEach((camera) => {
+      const currentCamera = myStream.getVideoTracks()[0];
+    cameras.forEach((camera) => {
       const option = document.createElement("option");
       option.value = camera.deviceId;
       option.innerText = camera.label;
       //카메라 option이 현재 선택된 카메라와 같은 label인지 알 수 있음
-      if(cuurrentCamera.label == camera.label) {
+      if (currentCamera.label === camera.label) {
         option.selected = true;
       }
       camerasSelect.appendChild(option);
-      });
-    } catch (e) {
-      console.log(e);
-    }
-
+    });
+  } catch (e) {
+    console.log(e);
+  }
 }
+
 
 
 async function getMedia(deviceId) {
@@ -52,10 +50,9 @@ async function getMedia(deviceId) {
       deviceId ? cameraConstraints : initialConstrains
     );
     myFace.srcObject = myStream;
-    if(!deviceId) {
+    if (!deviceId) {
       await getCameras();
     }
-    
   } catch (e) {
     console.log(e);
   }
@@ -64,7 +61,9 @@ async function getMedia(deviceId) {
 
 
 function handleMuteClick() {
-  myStream.getAudioTracks().forEach((track) => (track.enabled = !track.enabled));
+  myStream
+    .getAudioTracks()
+    .forEach((track) => (track.enabled = !track.enabled));
   if (!muted) {
     muteBtn.innerText = "Unmute";
     muted = true;
@@ -78,9 +77,21 @@ function handleMuteClick() {
 function handleCameraClick() {
   //camera off
   myStream
+    .getAudioTracks()
+    .forEach((track) => (track.enabled = !track.enabled));
+  if (!muted) {
+    muteBtn.innerText = "Unmute";
+    muted = true;
+  } else {
+    muteBtn.innerText = "Mute";
+    muted = false;
+  }
+}
+
+function handleCameraClick() {
+  myStream
     .getVideoTracks()
     .forEach((track) => (track.enabled = !track.enabled));
-  
   if (cameraOff) {
     cameraBtn.innerText = "Turn Camera Off";
     cameraOff = false;
@@ -90,12 +101,20 @@ function handleCameraClick() {
   }
 }
 
+
 async function handleCameraChange() {
-  welcome.hidden = true;
-  call.hidden = false;
   await getMedia(camerasSelect.value);
-  makeConnection();
+  if (myPeerConnection) {
+    const videoTracks = myStream.getVideoTracks()[0];
+    const videoSender = myPeerConnection
+    .getSenders()
+    .find((sender) => sender.track.kind === "video");
+    videoSender.replaceTrack(videoTracks);
+  }
 }
+
+
+
 
 muteBtn.addEventListener("click", handleMuteClick);
 cameraBtn.addEventListener("click", handleCameraClick);
@@ -108,18 +127,18 @@ camerasSelect.addEventListener("input", handleCameraChange);
 const welcome = document.getElementById("welcome");
 const welcomeForm = welcome.querySelector("form");
 
-async function startMedia() {
+async function initCall() {
   welcome.hidden = true;
   call.hidden = false;
   await getMedia();
   makeConnection();
-
 }
 
-function handleWelcomeSubmit(event) {
+async function handleWelcomeSubmit(event) {
   event.preventDefault();
   const input = welcomeForm.querySelector("input");
-  socket.emit("join_room", input.value, startMedia);
+  await initCall();
+  socket.emit("join_room", input.value);
   roomName = input.value;
   input.value = "";
 }
@@ -139,16 +158,45 @@ socket.on("welcome", async () => {
   socket.emit("offer", offer, roomName);
 });
 
-socket.on("offer", (offer) => {
-  console.log(offer);
+//브라우저1에서 setRemoteDescription 생성 -> 브라우저2에서 answer생성 후 브라우저1에게 전달
+socket.on("offer", async (offer) => {
+  console.log("received the offer");
+  myPeerConnection.setRemoteDescription(offer);
+  const answer = await myPeerConnection.createAnswer();
+  myPeerConnection.setLocalDescription(answer);
+  socket.emit("answer", answer, roomName);
+  console.log("sent the answer");
 });
+
+socket.on("answer", (answer) => {
+  console.log("received the answer");
+  myPeerConnection.setRemoteDescription(answer);
+});
+
+socket.on("ice", (ice) => {
+  console.log("received candidate");
+  myPeerConnection.addIceCandidate(ice);
+});
+
 
 
 //RTC Code
 
-function makeConnection() { //영상, 오디오 데이터를 peer connection에 input
+function makeConnection() {
   myPeerConnection = new RTCPeerConnection();
+  myPeerConnection.addEventListener("icecandidate", handleIce);
+  myPeerConnection.addEventListener("addstream", handleAddStream);
   myStream
     .getTracks()
-    .forEach(track => myPeerConnection.addTrack(track, myStream));
+    .forEach((track) => myPeerConnection.addTrack(track, myStream));
+}
+
+function handleIce(data) {
+  console.log("sent candidate");
+  socket.emit("ice", data.candidate, roomName);
+}
+
+function handleAddStream(data) {
+  const peerFace = document.getElementById("peerFace");
+  peerFace.srcObject = data.stream;
 }
