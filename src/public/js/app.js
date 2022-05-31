@@ -10,6 +10,7 @@ let muted = false;
 let cameraOff = false;
 let roomName;
 let myPeerConnection;
+let myDataChannel;
 
 
 
@@ -151,6 +152,12 @@ welcomeForm.addEventListener("submit", handleWelcomeSubmit);
 
 //This is Peer A & cerate offer
 socket.on("welcome", async () => {
+  //peer make offer&DataChannel
+  //myDataChannel은 반드시 양쪽 브라우저에 각각 정의 해주어야함
+  //myDataChannel을 통해 양쪽 브라우저가 텍스트 소통을 할 수 있음
+  myDataChannel = await myPeerConnection.createDataChannel("chat");
+  myDataChannel.addEventListener("message", (event) => console.log(event.data));
+  console.log("made data channel");
   const offer = await myPeerConnection.createOffer();
   myPeerConnection.setLocalDescription(offer)
   //offer to peer B
@@ -160,6 +167,11 @@ socket.on("welcome", async () => {
 
 //브라우저1에서 setRemoteDescription 생성 -> 브라우저2에서 answer생성 후 브라우저1에게 전달
 socket.on("offer", async (offer) => {
+  //새로운 DataChannel이 있을 때 evnetListener를 추가
+  myPeerConnection.addEventListener("datachannel", (event) => {
+    myDataChannel = event.channel;
+    myDataChannel.addEventListener("message", console.log);
+  });
   console.log("received the offer");
   myPeerConnection.setRemoteDescription(offer);
   const answer = await myPeerConnection.createAnswer();
@@ -183,7 +195,19 @@ socket.on("ice", (ice) => {
 //RTC Code
 
 function makeConnection() {
-  myPeerConnection = new RTCPeerConnection();
+  myPeerConnection = new RTCPeerConnection({
+    iceServers: [
+      {
+        urls: [
+          "stun:stun.l.google.com:19302",
+          "stun:stun1.l.google.com:19302",
+          "stun:stun2.l.google.com:19302",
+          "stun:stun3.l.google.com:19302",
+          "stun:stun4.l.google.com:19302",
+        ],
+      },
+    ],
+  });
   myPeerConnection.addEventListener("icecandidate", handleIce);
   myPeerConnection.addEventListener("addstream", handleAddStream);
   myStream
